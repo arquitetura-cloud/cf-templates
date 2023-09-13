@@ -1,0 +1,631 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudWatch Dashboard for AWS WAF
+Parameters:
+    WebACLName:
+        Description: Web ACL Name
+        Type: String
+    WAFRegion:
+        Description: WAF Region
+        Type: String
+        Default: us-east-1
+    CWLogGroupName:
+        Type: String
+        Description: Name of the CloudWatch Log LogGroupName for WAF 
+
+ #option to set the Contributor Insight Rules to be disabled on creation
+    ContributorInsightRuleState:
+        Type: String
+        Description: Select to enable or disable the Contributor Insight Rules on Creation.
+        Default: ENABLED
+        AllowedValues:
+          - ENABLED
+          - DISABLED
+
+Resources:
+
+    # CloudWatch Insight Rules - WAFTerminatingRules
+    WAFTopTerminatingRules:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+              "AggregateOn": "Count",
+              "Contribution": {
+              "Filters": [],
+              "Keys": [
+                "$.terminatingRuleId"
+              ]
+              },
+              "LogFormat": "JSON",
+              "LogGroupNames": [
+                  "${CWLogGroupName}" 
+              ],
+              "Schema": {
+              "Name": "CloudWatchLogRule",
+              "Version": 1
+              }
+          }
+        RuleName: !Sub WAFTerminatingRules-${CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopIPs
+    WAFTopIps:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+         {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [],
+            "Keys": [
+                "$.httpRequest.clientIp"
+            ]
+          },
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+         }
+        RuleName: !Sub WAFTopIPs-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopCountries
+    WAFTopCountries:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [],
+            "Keys": [
+                "$.httpRequest.country"
+            ]
+          },
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+            }
+        RuleName: !Sub WAFTopCountries-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopURI
+    WAFTopURI:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [],
+            "Keys": [
+                "$.httpRequest.uri"
+            ]
+          },
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+          }
+        RuleName: !Sub WAFTopURIs-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopHTTPMethods
+    WAFTopHTTPMethod:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [],
+            "Keys": [
+                "$.httpRequest.httpMethod"
+            ]
+          },
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+          }
+        RuleName: !Sub WAFTopHTTPMethods-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopRateBasedRules
+    WAFTopRateBasedRules:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [
+              {
+                "In": [
+                    "RATE_BASED"
+                ],
+                "Match": "$.terminatingRuleType"
+              }
+            ],
+            "Keys": [
+                "$.httpRequest.clientIp"
+            ]
+          } ,
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+          }
+        RuleName: !Sub WAFTopRateBasedRules-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+
+    # CloudWatch Insight Rules - WAFTopLabels
+    WAFTopLabels:
+      Type: AWS::CloudWatch::InsightRule
+      Properties:
+        RuleBody: !Sub |
+          {
+          "AggregateOn": "Count",
+          "Contribution": {
+            "Filters": [],
+            "Keys": [
+                "$.labels"
+            ]
+          },
+          "LogFormat": "JSON",
+          "LogGroupNames": [
+              "${ CWLogGroupName}" 
+          ],
+          "Schema": {
+            "Name": "CloudWatchLogRule",
+            "Version": 1
+          }
+          }
+        RuleName: !Sub WAFTopLabels-${ CWLogGroupName}
+        RuleState: !Ref ContributorInsightRuleState
+   
+    # CloudWatch Logs Insights query - Non-browser requests
+    nonBrowserRequestsQueryDefinition:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        LogGroupNames:
+          - !Ref CWLogGroupName
+        Name: "nonBrowserRequestsQueryDefinition"
+        QueryString: 'fields @timestamp, httpRequest.clientIp
+        | filter @message like "awswaf:managed:aws:bot-control:signal:non_browser_user_agent"
+        | parse @message ""labels":[*]"as Labels
+        | stats count(*) as requestCount by httpRequest.clientIP
+        | display @timestamp,httpRequest.clientIp, httpRequest.uri,Labels
+        | sort requestCount desc
+        | limit 10'
+
+    # CloudWatch Logs Insights query - Captcha Token
+    captchaTokenQueryDefinition:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        LogGroupNames:
+          - !Ref CWLogGroupName
+        Name: "captchaTokenQueryDefinition"
+        QueryString: 'fields @timestamp, httpRequest.clientIp
+        | filter captchaResponse.failureReason = "TOKEN_MISSING"
+        | stats count(*) as requestCount by httpRequest.clientIp, httpRequest.country
+        | sort requestCount desc
+        | limit 10'
+
+    # CloudWatch Logs Insights query -     
+    countedRules:
+      Type: AWS::Logs::QueryDefinition
+      Properties:
+        LogGroupNames:
+          - !Ref CWLogGroupName
+        Name: "topCountedRules"
+        QueryString: 'fields terminatingRuleMatchDetails, terminatingRuleId, action, @message
+        | filter terminatingRuleId != "Default_Action" and action != "ALLOW"
+        | stats count(*) as requestCount by httpRequest.clientIp, httpRequest.country
+        | display httpRequest.clientIp,httpRequest.uri, httpRequest.country, terminatingRuleMatchDetails
+        | limit 10'
+
+
+
+    # CloudWatch Dashboard -
+    # display wigets containing reports from Insight Rules, Metrics, and Metric Filters
+    CWDashboardForWAFLogs:
+      Type: AWS::CloudWatch::Dashboard
+      DependsOn:
+        - WAFTopTerminatingRules
+        - WAFTopIps
+        - WAFTopCountries
+        - WAFTopURI
+        - WAFTopHTTPMethod
+        - WAFTopRateBasedRules
+        - WAFTopLabels
+      Properties:
+
+        DashboardBody: !Sub |
+          {
+              "widgets": [
+                  {
+                        "type": "metric",
+                        "height": 6,
+                        "width": 6,
+                        "x": 0,
+                        "y": 0,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/WAFV2", "AllowedRequests", "WebACL", "${WebACLName}", "Rule", "ALL", { "id": "m1" } ],
+                                [ ".", "BlockedRequests", ".", ".", ".", ".", { "id": "m2" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": true,
+                            "region": "${WAFRegion}",
+                            "stat": "Average",
+                            "title": "Allowed vs Blocked Requests",
+                            "period": 300,
+                            "yAxis": {
+                                "left": {
+                                    "showUnits": false
+                                }
+                            }
+                        }
+                  },
+                  {
+                        "type": "metric",
+                        "height": 6,
+                        "width": 6,
+                        "x": 12,
+                        "y": 0,
+                        "properties": {
+                            "metrics": [
+                                [ { "id": "e1", "expression": "SEARCH('{AWS/WAFV2,Rule,WebACL} MetricName=\"AllowedRequests\" WebACL=\"${WebACLName}\" Rule=\"ALL\"', 'Sum', 300)", "stat": "Sum", "period": 300, "visible": false } ],
+                                [ { "id": "e2", "expression": "SEARCH('{AWS/WAFV2,Rule,WebACL} MetricName=\"BlockedRequests\" WebACL=\"${WebACLName}\" Rule=\"ALL\"', 'Sum', 300)", "stat": "Sum", "period": 300, "visible": false } ],
+                                [ { "id": "e3", "expression": "SEARCH('{AWS/WAFV2,LabelName,LabelNamespace,WebACL} MetricName=\"AllowedRequests\" LabelNamespace=\"awswaf:managed:aws:bot-control:bot:category\" WebACL=\"${WebACLName}\"', 'Sum', 300)", "period": 300, "visible": false } ],
+                                [ { "id": "e4", "expression": "SEARCH('{AWS/WAFV2,LabelName,LabelNamespace,WebACL} MetricName=\"BlockedRequests\" LabelNamespace=\"awswaf:managed:aws:bot-control:bot:category\" WebACL=\"${WebACLName}\"', 'Sum', 300)", "period": 300, "visible": false } ],
+                                [ { "id": "e5", "expression": "SUM([e3,e4])", "label": "Bot requests", "color": "#FF7F0E" } ],
+                                [ { "id": "e6", "expression": "SUM([e1,e2,-e3,-e4])", "label": "Non-bot requests", "color": "#1F77B4" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": true,
+                            "region": "${WAFRegion}",
+                            "stat": "Average",
+                            "title": "Bot requests and non-bot requests",
+                            "period": 300,
+                            "yAxis": {
+                                "left": {
+                                    "showUnits": false,
+                                    "min": 0
+                                }
+                            }
+                        }
+                  },
+                  {
+                        "type": "metric",
+                        "height": 6,
+                        "width": 6,
+                        "x": 18,
+                        "y": 0,
+                        "properties": {
+                            "metrics": [
+                                [ { "id": "e1", "expression": "SEARCH('{AWS/WAFV2,Rule,WebACL} MetricName=\"AllowedRequests\" WebACL=\"${WebACLName}\" Rule=\"ALL\"', 'Sum', 300)", "stat": "Sum", "period": 300, "visible": false } ],
+                                [ { "id": "e2", "expression": "SEARCH('{AWS/WAFV2,Rule,WebACL} MetricName=\"BlockedRequests\" WebACL=\"${WebACLName}\" Rule=\"ALL\"', 'Sum', 300)", "stat": "Sum", "period": 300, "visible": false } ],
+                                [ { "id": "e3", "expression": "SEARCH('{AWS/WAFV2,LabelName,LabelNamespace,WebACL} MetricName=\"AllowedRequests\" LabelNamespace=\"awswaf:managed:aws:bot-control:bot:category\" WebACL=\"${WebACLName}\"', 'Sum', 300)", "period": 300, "visible": false } ],
+                                [ { "id": "e4", "expression": "SEARCH('{AWS/WAFV2,LabelName,LabelNamespace,WebACL} MetricName=\"BlockedRequests\" LabelNamespace=\"awswaf:managed:aws:bot-control:bot:category\" WebACL=\"${WebACLName}\"', 'Sum', 300)", "period": 300, "visible": false } ],
+                                [ { "id": "e5", "expression": "SUM([e3,e4])", "label": "Bot requests", "color": "#FF7F0E" } ],
+                                [ { "id": "e6", "expression": "SUM([e1,e2,-e3,-e4])", "label": "Non-bot requests", "color": "#1F77B4" } ]
+                            ],
+                            "view": "singleValue",
+                            "region": "${WAFRegion}",
+                            "stat": "Average",
+                            "title": "All requests",
+                            "period": 300,
+                            "liveData": false,
+                            "setPeriodToTimeRange": true
+                        }
+                  },
+                  {
+                        "type": "metric",
+                        "height": 6,
+                        "width": 6,
+                        "x": 0,
+                        "y": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/WAFV2", "CountedRequests", "WebACL", "${WebACLName}", "Rule", "ALL" ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": true,
+                            "region": "${WAFRegion}",
+                            "title": "All Counted Requests",
+                            "period": 300,
+                            "yAxis": {
+                                "left": {
+                                    "showUnits": false
+                                }
+                            }
+                        }
+                  },
+                  {
+                        "type": "metric",
+                        "height": 6,
+                        "width": 6,
+                        "x": 6,
+                        "y": 0,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/WAFV2", "CaptchaRequests", "WebACL", "${WebACLName}", "Rule", "ALL" ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": true,
+                            "region": "${WAFRegion}",
+                            "title": "All Captcha Requests",
+                            "period": 300,
+                            "yAxis": {
+                                "left": {
+                                    "showUnits": false
+                                }
+                            }
+                        }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 12,
+                      "y": 6,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopTerminatingRules.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 10 Terminating Rules",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 18,
+                      "y": 6,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 25,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopIps.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 25 Source IPs",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 0,
+                      "y": 12,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopCountries.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 10 Source Countries",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                        "type": "log",
+                        "height": 6,
+                        "width": 6,
+                        "x": 6,
+                        "y": 6,
+                        "properties": {
+                            "query": "SOURCE '${CWLogGroupName}' | fields @timestamp, @message\n| parse @message '{\"name\":\"User-Agent\",\"value\":\"*\"}' as userAgent\n| stats count(*) as requestCount by userAgent|  sort requestCount desc| limit 100",
+                            "region": "${WAFRegion}",
+                            "title": "Top User Agents",
+                            "view": "table"
+                        }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 12,
+                      "y": 12,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopURI.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 10 URIs",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 18,
+                      "y": 12,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopHTTPMethod.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top HTTP Methods",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                        "type": "log",
+                        "height": 6,
+                        "width": 6,
+                        "x": 0,
+                        "y": 18,
+                        "properties": {
+                            "query": "SOURCE '${CWLogGroupName}' | fields @timestamp, @message\n| parse @message '{\"name\":\"Referer\",\"value\":\"*\"}' as referer\n| stats count(*) as requestCount by referer|  sort requestCount desc| limit 100",
+                            "region": "${WAFRegion}",
+                            "title": "Top Referers",
+                            "view": "table"
+                        }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 6,
+                      "y": 18,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopRateBasedRules.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 10 Rate Based Rules",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 6,
+                      "y": 18,
+                      "width": 6,
+                      "height": 6,
+                      "properties": {
+                          "period": 60,
+                          "insightRule": {
+                              "maxContributorCount": 10,
+                              "orderBy": "Sum",
+                              "ruleName": "${WAFTopLabels.RuleName}"
+                          },
+                          "stacked": false,
+                          "view": "timeSeries",
+                          "yAxis": {
+                              "left": {
+                                  "showUnits": false
+                              },
+                              "right": {
+                                  "showUnits": false
+                              }
+                          },
+                          "region": "${AWS::Region}",
+                          "title": "Top 10 Labels",
+                          "legend": {
+                              "position": "right"
+                          }
+                      }
+                  }
+              ]
+           } 
+        DashboardName: !Sub  ${WebACLName}-Monitoring
+Outputs:
+  OutputDashboardURI:
+    Description: Link to the CloudWatch Dashboard
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${CWDashboardForWAFLogs}'
